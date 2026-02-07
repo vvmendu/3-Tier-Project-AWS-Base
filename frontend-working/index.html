@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>User API Frontend</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #eef2f7;
+      margin: 40px;
+      color: #333;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .header img {
+      height: 50px;
+    }
+
+    h2 {
+      color: #2c3e50;
+      text-shadow: 1px 1px 2px #ccc;
+      margin: 0;
+    }
+
+    h3 {
+      color: #34495e;
+      margin-top: 50px;
+    }
+
+    table {
+      width: 70%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      background-color: #ffffff;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 14px 18px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #2980b9;
+      color: white;
+      font-size: 16px;
+      letter-spacing: 1px;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f4f6f8;
+    }
+
+    tr:hover {
+      background-color: #e1ecf4;
+      transition: 0.2s ease-in-out;
+    }
+
+    input[type="text"], input[type="email"], input[type="number"] {
+      padding: 10px;
+      width: 220px;
+      margin-right: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 15px;
+    }
+
+    button {
+      padding: 10px 18px;
+      background-color: #27ae60;
+      border: none;
+      color: white;
+      font-size: 15px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #219150;
+    }
+
+    #formMsg, #getMsg, #updateMsg, #deleteMsg {
+      margin-top: 12px;
+      font-weight: bold;
+      color: #d63031;
+    }
+
+    .inline-form {
+      margin-top: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="https://a0.awsstatic.com/libra-css/images/logos/aws_logo_smile_1200x630.png" alt="GCP Logo">
+    <h2>Welcome to multicloud devops </h2>
+  </div>
+
+  <!-- List all users (GET /users) -->
+  <table id="userTable">
+    <tr><th>ID</th><th>Name</th><th>Email</th></tr>
+  </table>
+
+  <!-- POST /users/add -->
+  <h3>Add New User (POST)</h3>
+  <form id="userForm">
+    <input type="text" id="name" placeholder="Enter Name" required>
+    <input type="email" id="email" placeholder="Enter Email" required>
+    <button type="submit">Add User</button>
+  </form>
+  <p id="formMsg"></p>
+
+  <!-- GET /users/{id} -->
+  <h3>Get User by ID (GET)</h3>
+  <div class="inline-form">
+    <input type="number" id="getUserId" placeholder="Enter User ID">
+    <button type="button" onclick="getUserById()">Get User</button>
+  </div>
+  <p id="getMsg"></p>
+
+  <!-- PUT /users/{id} or /users/update/{id} (adjust path if needed) -->
+  <h3>Update User (PUT)</h3>
+  <form id="updateForm" class="inline-form">
+    <input type="number" id="updateUserId" placeholder="User ID" required>
+    <input type="text" id="updateName" placeholder="New Name" required>
+    <input type="email" id="updateEmail" placeholder="New Email" required>
+    <button type="submit">Update User</button>
+  </form>
+  <p id="updateMsg"></p>
+
+  <!-- DELETE /users/{id} or /users/delete/{id} (adjust path if needed) -->
+  <h3>Delete User (DELETE)</h3>
+  <div class="inline-form">
+    <input type="number" id="deleteUserId" placeholder="User ID to delete">
+    <button type="button" onclick="deleteUser()">Delete User</button>
+  </div>
+  <p id="deleteMsg"></p>
+
+  <script>
+   // const backendIP = "http://3.80.111.134:5000"; // for public deployment
+   const backendIP = ""; // dont pass any value and uncomment this line for proxy and comment above line
+
+    function loadUsers() {
+      fetch(`${backendIP}/users`)
+        .then(response => response.json())
+        .then(users => {
+          const table = document.getElementById("userTable");
+          // clear old rows except header
+          while (table.rows.length > 1) {
+            table.deleteRow(1);
+          }
+          users.forEach(user => {
+            const row = table.insertRow();
+            row.insertCell(0).innerText = user.id;
+            row.insertCell(1).innerText = user.name;
+            row.insertCell(2).innerText = user.email;
+          });
+        })
+        .catch(err => {
+          console.error("Failed to load users:", err);
+        });
+    }
+
+    document.getElementById("userForm").addEventListener("submit", function(e) {
+      e.preventDefault();
+      const name = document.getElementById("name").value;
+      const email = document.getElementById("email").value;
+
+      fetch(`${backendIP}/users/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email })
+      })
+      .then(res => res.json())
+      .then(result => {
+        document.getElementById("formMsg").textContent = result.message || result.error;
+        loadUsers();
+      })
+      .catch(err => {
+        document.getElementById("formMsg").textContent = "Error adding user.";
+        console.error("Add error:", err);
+      });
+    });
+
+    // GET /users/{id}
+    function getUserById() {
+      const id = document.getElementById("getUserId").value;
+      if (!id) {
+        document.getElementById("getMsg").textContent = "Please enter a User ID.";
+        return;
+      }
+
+      fetch(`${backendIP}/users/${id}`)
+        .then(res => res.json())
+        .then(user => {
+          if (user && user.id) {
+            document.getElementById("getMsg").textContent =
+              `User: ID=${user.id}, Name=${user.name}, Email=${user.email}`;
+          } else {
+            document.getElementById("getMsg").textContent = user.message || "User not found.";
+          }
+        })
+        .catch(err => {
+          document.getElementById("getMsg").textContent = "Error fetching user.";
+          console.error("Get error:", err);
+        });
+    }
+
+    // PUT /users/{id} or /users/update/{id}
+    document.getElementById("updateForm").addEventListener("submit", function(e) {
+      e.preventDefault();
+      const id = document.getElementById("updateUserId").value;
+      const name = document.getElementById("updateName").value;
+      const email = document.getElementById("updateEmail").value;
+
+      if (!id) {
+        document.getElementById("updateMsg").textContent = "Please enter a User ID.";
+        return;
+      }
+
+      fetch(`${backendIP}/users/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email })
+      })
+      .then(res => res.json())
+      .then(result => {
+        document.getElementById("updateMsg").textContent = result.message || result.error;
+        loadUsers();
+      })
+      .catch(err => {
+        document.getElementById("updateMsg").textContent = "Error updating user.";
+        console.error("Update error:", err);
+      });
+    });
+
+    // DELETE /users/{id} or /users/delete/{id}
+    function deleteUser() {
+      const id = document.getElementById("deleteUserId").value;
+      if (!id) {
+        document.getElementById("deleteMsg").textContent = "Please enter a User ID.";
+        return;
+      }
+
+      fetch(`${backendIP}/users/${id}`, {
+        method: "DELETE"
+      })
+      .then(res => res.json())
+      .then(result => {
+        document.getElementById("deleteMsg").textContent = result.message || result.error;
+        loadUsers();
+      })
+      .catch(err => {
+        document.getElementById("deleteMsg").textContent = "Error deleting user.";
+        console.error("Delete error:", err);
+      });
+    }
+
+    loadUsers();
+  </script>
+</body>
+</html>
+
