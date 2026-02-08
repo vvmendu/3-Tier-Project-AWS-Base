@@ -440,7 +440,7 @@ resource "aws_db_instance" "main" {
   backup_retention_period = 1
 
   tags = {
-    Name = "3Tier-RDS-west"
+    Name = "db-west-01-3Tier-RDS-west"
   }
 }
 
