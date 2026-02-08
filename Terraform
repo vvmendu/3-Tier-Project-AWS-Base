@@ -314,17 +314,64 @@ resource "aws_lb_listener" "external" {
   }
 }
 
+
+# ========== SESSION MANAGER (AWS Systems Manager) ==========
+resource "aws_iam_role" "ssm_role" {
+  name = "3tierSSMRoleWest"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ssm_policy" {
+  role       = aws_iam_role.ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_role_policy_attachment" "ssm_cloudwatch" {
+  role       = aws_iam_role.ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
+resource "aws_iam_instance_profile" "ssm_profile" {
+  name = "3tierSSMProfileWest"
+  role = aws_iam_role.ssm_role.name
+}
+
+
+# ========== SSH KEY PAIR ==========
+resource "aws_key_pair" "tier3_ssh" {
+  key_name   = "three-tier-project-key"           # Your exact name
+  public_key = file("${path.module}/three-tier-project-key.pub")  # Matches .pub
+
+  tags = {
+    Name = "Three-Tier-West-SSH-Key"
+  }
+}
+
+
+
 # ========== WEB INSTANCES (Frontend Tier - 2 instances) ==========
 resource "aws_instance" "web_1a" {
   ami                    = "ami-055a9df0c8c9f681c"  # Amazon Linux 2023 us-west-2
   instance_type          = "t3.micro"
   subnet_id              = aws_subnet.private_web_1a.id
   vpc_security_group_ids = [aws_security_group.web_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
+  key_name               = aws_key_pair.tier3_ssh.key_name
   
   user_data = base64encode(<<-EOF
     #!/bin/bash
     yum update -y
-    yum install -y httpd
+    yum install -y httpd python3 git
     systemctl start httpd
     systemctl enable httpd
     echo "<h1>Web Server 1A - $(hostname)</h1><p>External LB → Web → App → RDS</p>" > /var/www/html/index.html
@@ -341,11 +388,13 @@ resource "aws_instance" "web_1b" {
   instance_type          = "t3.micro"
   subnet_id              = aws_subnet.private_web_1b.id
   vpc_security_group_ids = [aws_security_group.web_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
+  key_name               = aws_key_pair.tier3_ssh.key_name
   
   user_data = base64encode(<<-EOF
     #!/bin/bash
     yum update -y
-    yum install -y httpd
+    yum install -y httpd python3 git
     systemctl start httpd
     systemctl enable httpd
     echo "<h1>Web Server 1B - $(hostname)</h1><p>Your 3-Tier Architecture Works!</p>" > /var/www/html/index.html
@@ -376,11 +425,13 @@ resource "aws_instance" "app_1a" {
   instance_type          = "t3.micro"
   subnet_id              = aws_subnet.private_app_1a.id
   vpc_security_group_ids = [aws_security_group.app_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
+  key_name               = aws_key_pair.tier3_ssh.key_name
   
   user_data = base64encode(<<-EOF
     #!/bin/bash
     yum update -y
-    yum install -y httpd
+    yum install -y httpd python3 git
     systemctl start httpd
     systemctl enable httpd
     echo "<h1>App Server 1A - $(hostname)</h1><p>Connected to RDS MySQL</p>" > /var/www/html/index.html
@@ -397,11 +448,13 @@ resource "aws_instance" "app_1b" {
   instance_type          = "t3.micro"
   subnet_id              = aws_subnet.private_app_1b.id
   vpc_security_group_ids = [aws_security_group.app_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
+  key_name               = aws_key_pair.tier3_ssh.key_name
   
   user_data = base64encode(<<-EOF
     #!/bin/bash
     yum update -y
-    yum install -y httpd
+    yum install -y httpd python3 git
     systemctl start httpd
     systemctl enable httpd
     echo "<h1>App Server 1B - $(hostname)</h1>" > /var/www/html/index.html
