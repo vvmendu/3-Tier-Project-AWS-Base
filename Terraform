@@ -1,5 +1,5 @@
-Main.tf
-=========================
+main.tf:
+================
 terraform {
   required_providers {
     aws = {
@@ -182,6 +182,277 @@ resource "aws_route_table_association" "private_app_1b" {
 # ... (Security Groups, ALB, EC2, RDS from previous main.tf - add them here)
 # External ALB, Web EC2 (2), App EC2 (2), RDS MySQL in db subnets
 
+# ========== SECURITY GROUPS (Your Diagram) ==========
+resource "aws_security_group" "public_alb_sg" {
+  name_prefix = "public-alb-"
+  vpc_id      = aws_vpc.main.id
 
-====================================================================================================
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "External-ALB-SG-west"
+  }
+}
+
+resource "aws_security_group" "web_sg" {
+  name_prefix = "web-"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.public_alb_sg.id]
+  }
+
+  egress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.main.cidr_block]
+  }
+
+  tags = {
+    Name = "Web-SG-west"
+  }
+}
+
+resource "aws_security_group" "app_sg" {
+  name_prefix = "app-"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    security_groups = [aws_security_group.web_sg.id]
+  }
+
+  egress {
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.main.cidr_block]
+  }
+
+  tags = {
+    Name = "App-SG-west"
+  }
+}
+
+resource "aws_security_group" "db_sg" {
+  name_prefix = "db-"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app_sg.id]
+  }
+
+  tags = {
+    Name = "DB-SG-west"
+  }
+}
+
+# ========== EXTERNAL LOAD BALANCER (Internet Facing) ==========
+resource "aws_lb" "external" {
+  name               = "3tier-external-west"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.public_alb_sg.id]
+  subnets            = [aws_subnet.public_1a.id, aws_subnet.public_1b.id]
+
+  tags = {
+    Name = "External-LB-west"
+  }
+}
+
+resource "aws_lb_target_group" "frontend_tg" {
+  name     = "frontend-tg-west"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200-299"
+    path                = "/"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    unhealthy_threshold = 3
+  }
+
+  tags = {
+    Name = "Frontend-TG-west"
+  }
+}
+
+resource "aws_lb_listener" "external" {
+  load_balancer_arn = aws_lb.external.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.frontend_tg.arn
+  }
+}
+
+# ========== WEB INSTANCES (Frontend Tier - 2 instances) ==========
+resource "aws_instance" "web_1a" {
+  ami                    = "ami-0fc20dd1da406780b"  # Amazon Linux 2023 us-west-2
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.private_web_1a.id
+  vpc_security_group_ids = [aws_security_group.web_sg.id]
+  
+  user_data = base64encode(<<-EOF
+    #!/bin/bash
+    yum update -y
+    yum install -y httpd
+    systemctl start httpd
+    systemctl enable httpd
+    echo "<h1>Web Server 1A - $(hostname)</h1><p>External LB → Web → App → RDS</p>" > /var/www/html/index.html
+    EOF
+  )
+
+  tags = {
+    Name = "Web-1A-west"
+  }
+}
+
+resource "aws_instance" "web_1b" {
+  ami                    = "ami-0fc20dd1da406780b"
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.private_web_1b.id
+  vpc_security_group_ids = [aws_security_group.web_sg.id]
+  
+  user_data = base64encode(<<-EOF
+    #!/bin/bash
+    yum update -y
+    yum install -y httpd
+    systemctl start httpd
+    systemctl enable httpd
+    echo "<h1>Web Server 1B - $(hostname)</h1><p>Your 3-Tier Architecture Works!</p>" > /var/www/html/index.html
+    EOF
+  )
+
+  tags = {
+    Name = "Web-1B-west"
+  }
+}
+
+# Register Web instances to Target Group
+resource "aws_lb_target_group_attachment" "web_1a" {
+  target_group_arn = aws_lb_target_group.frontend_tg.arn
+  target_id        = aws_instance.web_1a.id
+  port             = 80
+}
+
+resource "aws_lb_target_group_attachment" "web_1b" {
+  target_group_arn = aws_lb_target_group.frontend_tg.arn
+  target_id        = aws_instance.web_1b.id
+  port             = 80
+}
+
+# ========== APP INSTANCES (Backend Tier - 2 instances) ==========
+resource "aws_instance" "app_1a" {
+  ami                    = "ami-0fc20dd1da406780b"
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.private_app_1a.id
+  vpc_security_group_ids = [aws_security_group.app_sg.id]
+  
+  user_data = base64encode(<<-EOF
+    #!/bin/bash
+    yum update -y
+    yum install -y httpd
+    systemctl start httpd
+    systemctl enable httpd
+    echo "<h1>App Server 1A - $(hostname)</h1><p>Connected to RDS MySQL</p>" > /var/www/html/index.html
+    EOF
+  )
+
+  tags = {
+    Name = "App-1A-west"
+  }
+}
+
+resource "aws_instance" "app_1b" {
+  ami                    = "ami-0fc20dd1da406780b"
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.private_app_1b.id
+  vpc_security_group_ids = [aws_security_group.app_sg.id]
+  
+  user_data = base64encode(<<-EOF
+    #!/bin/bash
+    yum update -y
+    yum install -y httpd
+    systemctl start httpd
+    systemctl enable httpd
+    echo "<h1>App Server 1B - $(hostname)</h1>" > /var/www/html/index.html
+    EOF
+  )
+
+  tags = {
+    Name = "App-1B-west"
+  }
+}
+
+# ========== RDS MYSQL DATABASE ==========
+resource "aws_db_subnet_group" "main" {
+  name       = "3tier-db-west"
+  subnet_ids = [aws_subnet.db_1a.id, aws_subnet.db_1b.id]
+
+  tags = {
+    Name = "3Tier-DB-SubnetGroup-west"
+  }
+}
+
+resource "aws_db_instance" "main" {
+  identifier              = "db-west-01"
+  engine                  = "mysql"
+  engine_version          = "8.0"
+  instance_class          = "db.t3.micro"
+  allocated_storage       = 20
+  max_allocated_storage   = 100
+  storage_type            = "gp2"
+  db_subnet_group_name    = aws_db_subnet_group.main.name
+  vpc_security_group_ids  = [aws_security_group.db_sg.id]
+  username                = "admin"
+  password                = "SecurePass123!"
+  skip_final_snapshot     = true
+  publicly_accessible     = false
+  backup_retention_period = 1
+
+  tags = {
+    Name = "3Tier-RDS-west"
+  }
+}
+
+# ========== OUTPUTS ==========
+output "external_lb_dns" {
+  value = aws_lb.external.dns_name
+}
+
+output "vpc_id" {
+  value = aws_vpc.main.id
+}
+
+output "private_subnets" {
+  value = [aws_subnet.private_web_1a.id, aws_subnet.private_web_1b.id, aws_subnet.private_app_1a.id, aws_subnet.private_app_1b.id]
+}
