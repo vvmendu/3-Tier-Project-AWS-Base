@@ -316,7 +316,7 @@ resource "aws_lb_listener" "external" {
 
 # ========== WEB INSTANCES (Frontend Tier - 2 instances) ==========
 resource "aws_instance" "web_1a" {
-  ami                    = "ami-0fc20dd1da406780b"  # Amazon Linux 2023 us-west-2
+  ami                    = "ami-055a9df0c8c9f681c"  # Amazon Linux 2023 us-west-2
   instance_type          = "t3.micro"
   subnet_id              = aws_subnet.private_web_1a.id
   vpc_security_group_ids = [aws_security_group.web_sg.id]
@@ -337,7 +337,7 @@ resource "aws_instance" "web_1a" {
 }
 
 resource "aws_instance" "web_1b" {
-  ami                    = "ami-0fc20dd1da406780b"
+  ami                    = "ami-055a9df0c8c9f681c"
   instance_type          = "t3.micro"
   subnet_id              = aws_subnet.private_web_1b.id
   vpc_security_group_ids = [aws_security_group.web_sg.id]
@@ -372,7 +372,7 @@ resource "aws_lb_target_group_attachment" "web_1b" {
 
 # ========== APP INSTANCES (Backend Tier - 2 instances) ==========
 resource "aws_instance" "app_1a" {
-  ami                    = "ami-0fc20dd1da406780b"
+  ami                    = "ami-055a9df0c8c9f681c"
   instance_type          = "t3.micro"
   subnet_id              = aws_subnet.private_app_1a.id
   vpc_security_group_ids = [aws_security_group.app_sg.id]
@@ -393,7 +393,7 @@ resource "aws_instance" "app_1a" {
 }
 
 resource "aws_instance" "app_1b" {
-  ami                    = "ami-0fc20dd1da406780b"
+  ami                    = "ami-055a9df0c8c9f681c"
   instance_type          = "t3.micro"
   subnet_id              = aws_subnet.private_app_1b.id
   vpc_security_group_ids = [aws_security_group.app_sg.id]
